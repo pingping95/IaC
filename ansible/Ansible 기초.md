@@ -44,7 +44,9 @@ ansible --version
 
     SSH 인증은 크게 1) Password 인증과 2) Key 인증이 있는데 접속할 때 인증 정보를 요구하지 않게 하기 위해 Managed Host 부분에 public key를 전달하는 과정이 필요하다.
 
-![Ansible%20%E1%84%80%E1%85%B5%E1%84%8E%E1%85%A9%20%E1%84%80%E1%85%A2%E1%84%82%E1%85%A7%E1%86%B7%20&%20%E1%84%89%E1%85%A5%E1%86%AF%E1%84%8E%E1%85%B5%20&%20%E1%84%8E%E1%85%A9%E1%84%80%E1%85%B5%20%E1%84%89%E1%85%A5%E1%86%AF%E1%84%8C%E1%85%A5%E1%86%BC%20e3d01fc733834a9f9a0c1b0665cbea05/Untitled.png](Ansible%20%E1%84%80%E1%85%B5%E1%84%8E%E1%85%A9%20%E1%84%80%E1%85%A2%E1%84%82%E1%85%A7%E1%86%B7%20&%20%E1%84%89%E1%85%A5%E1%86%AF%E1%84%8E%E1%85%B5%20&%20%E1%84%8E%E1%85%A9%E1%84%80%E1%85%B5%20%E1%84%89%E1%85%A5%E1%86%AF%E1%84%8C%E1%85%A5%E1%86%BC%20e3d01fc733834a9f9a0c1b0665cbea05/Untitled.png)
+![Untitled](https://user-images.githubusercontent.com/67780144/94347283-b9964380-006d-11eb-8072-3b58621d810f.png)
+
+
 
 - key 생성
 
@@ -320,7 +322,7 @@ hosts:                # YAML List 형식
     - tests : 역할을 테스트할 때 사용하는 인벤터리가 있는 디렉터리
     - vars : 역할 변수의 값을 정의하는 디렉터리
 
-![Ansible%20%E1%84%80%E1%85%B5%E1%84%8E%E1%85%A9%20%E1%84%80%E1%85%A2%E1%84%82%E1%85%A7%E1%86%B7%20&%20%E1%84%89%E1%85%A5%E1%86%AF%E1%84%8E%E1%85%B5%20&%20%E1%84%8E%E1%85%A9%E1%84%80%E1%85%B5%20%E1%84%89%E1%85%A5%E1%86%AF%E1%84%8C%E1%85%A5%E1%86%BC%20e3d01fc733834a9f9a0c1b0665cbea05/Untitled%201.png](Ansible%20%E1%84%80%E1%85%B5%E1%84%8E%E1%85%A9%20%E1%84%80%E1%85%A2%E1%84%82%E1%85%A7%E1%86%B7%20&%20%E1%84%89%E1%85%A5%E1%86%AF%E1%84%8E%E1%85%B5%20&%20%E1%84%8E%E1%85%A9%E1%84%80%E1%85%B5%20%E1%84%89%E1%85%A5%E1%86%AF%E1%84%8C%E1%85%A5%E1%86%BC%20e3d01fc733834a9f9a0c1b0665cbea05/Untitled%201.png)
+![Untitled 1](https://user-images.githubusercontent.com/67780144/94347285-bac77080-006d-11eb-80ff-e14e5d8bed2d.png)
 
 - 모듈 간단 사용법
     1. uptime
