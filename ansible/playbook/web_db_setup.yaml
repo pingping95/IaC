@@ -1,0 +1,40 @@
+---
+- name: Web Servers must ready to serve
+  hosts: webservers
+  become: true
+  tasks:
+    - name: Packages must be installed
+      yum:
+        state: latest
+        name:
+          - httpd
+          - php
+    - name: httpd service running
+      service:
+        name: httpd
+        state: started
+    - name: firewalld allow webservice
+      firewalld:
+        service: http
+        permanent: yes
+        state: enabled
+        immediate: yes
+- name: DB Servers must ready to serve
+  hosts: dbservers
+  become: true
+  tasks:
+    - name: Packages must be installed
+      yum:
+        name: mariadb-server
+        state: latest
+    - name: mariadb service running
+      service:
+        name: mariadb
+        state: started
+    - name: firewalld allow dbservice
+      firewalld:
+        service: mysql
+        permanent: yes
+        state: enabled
+        immediate: yes
+
