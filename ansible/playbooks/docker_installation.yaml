@@ -1,0 +1,96 @@
+---
+- name: Install Docker
+  hosts: web
+  become: true
+  tasks:
+  - when: ansible_facts.distribution == "CentOS"
+    block:
+      - name: Install yum utils
+        yum:
+          name: yum-utils
+          state: latest
+
+      - name: Install lvm2, d-m-p-d
+        yum:
+          name: "{{ item }}"
+          state: latest
+        loop: [
+          'lvm2', 
+          'device-mapper-persistent-data', 
+        ]
+        
+      - name: Add Docker repository
+        get_url:
+          url: https://download.docker.com/linux/centos/docker-ce.repo
+          dest: /etc/yum.repos.d/docer-ce.repo
+
+      - name: install docker packages
+        yum:
+          name: "{{ item }}"
+          state: latest
+        loop: [
+          'docker-ce',
+          'docker-ce-cli',
+          'containerd.io'
+        ]
+      
+      - name: Start Docker Daemon
+        service:
+          name: docker
+          state: started
+          enabled: yes
+
+      - name: Check Docker Version
+        command: docker -v
+        register: hello
+      
+      - name: debugging
+        debug:
+          msg: "{{ hello['stdout'] }}"
+
+  - when: ansible_facts.distribution == "Ubuntu"
+    remote_user: devops
+    block:
+      - name: Install aptitude using apt
+        apt:
+          name: aptitude
+          state: latest
+          force_apt_get: yes
+
+      - name: Set up the docker repository
+        apt:
+          name: "{{ item }}"
+          state: latest
+        loop: [
+          'apt-transport-https', 
+          'ca-certificates', 
+          'curl',
+          'software-properties-common',
+          'python3-pip',
+          'virtualenv',
+          'python3-setuptools'
+        ]
+
+      - name: Add Docker GPG apt key
+        apt_key:
+          url: https://download.docker.com/linux/ubuntu/gpg
+          state: present
+
+      - name: Add Docker Repository
+        apt_repository:
+          repo: deb https://download.docker.com/linux/ubuntu bionic stable
+          state: present
+
+      - name: Update apt and install docker-ce
+        apt: 
+          update_cache: yes
+          name: docker-ce
+          state: latest
+      
+      - name: Check Docker Version
+        command: docker -v
+        register: hello
+      
+      - name: debugging
+        debug:
+          msg: "{{ hello['stdout'] }}"
