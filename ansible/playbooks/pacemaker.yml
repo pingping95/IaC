@@ -1,0 +1,43 @@
+---
+- name: Set Pacemaker
+  hosts: node1
+  gather_facts: no
+  become: true
+  tasks:
+    - name: config | Setting hacluster password
+      authorized_key:
+        user: user
+        state: present
+        key: "{{ lookup('file', '/home/student/.ssh/id_rsa.pub') }}"
+
+    - name: copy 
+      copy:
+        src: nopasswd
+        dest: /etc/sudoers.d/user
+
+    - name: Installing Packages
+      yum:
+        name: "{{ item }}"
+        state: "present"
+      become: true
+      with_items:
+        - 'pacemaker'
+        - 'pcs'
+
+    - name: Restart, enable pcsd
+      service:
+        name: pcsd
+        state: started
+        enabled: yes
+    
+    - name: Open Firewall
+      firewalld:
+        service: high-availability
+        permanent: yes
+        state: enabled
+        immediate: yes
+    
+    - name: get password to user
+      user:
+        name: hacluster
+        password: "{{ 'dkagh1.' | password_hash ('sha512') }}"
