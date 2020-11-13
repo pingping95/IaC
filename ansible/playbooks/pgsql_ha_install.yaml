@@ -1,0 +1,126 @@
+### Supporting OS : CentOS 7
+### master : pgsql01
+### slave  : pgsql02, pgsql03
+### you should configure /etc/hosts ans ./inventory file
+### ansible_user=root
+### ansible_password=<<password>>
+### You can choose 10 or 11 version
+### Usage : ansible-playbook -i inventory pgsql_ha_install.yaml --extra-vars "version=11"
+---
+# Playbook 1
+- name: Install PostgreSQL
+  hosts: postgres
+  gather_facts: yes
+  vars:
+    pgsql_ver: "{{ version }}"
+    pgdata: "/var/lib/pgsql/{{ pgsql_ver }}"
+    pg_bin: "pgsql-{{ pgsql_ver }}"
+  tasks:
+    - name: Add postgres Group
+      group:
+        name: postgres
+        gid: 5001
+        state: present
+    - name: Add Postgres User
+      user:
+        name: postgres
+        shell: /bin/bash
+        uid: 5001
+        group: postgres
+        home: /home/postgres
+    - name: create directory
+      file:
+        path: "{{ pgdata }}"
+        state: directory
+        owner: postgres
+        group: postgres
+    - name: Setting bash_profile
+      blockinfile:
+        path: /home/postgres/.bash_profile
+        block: |
+          [ -f /etc/profile ] && source /etc/profile
+          export PGDATA={{ pgdata }}/data
+          # If you want to customize your settings,
+          # Use the file below. This is not overridden
+          # by the RPMS.
+          [ -f /home/postgres/.pgsql_profile ] && source /home/postgres/.pgsql_profile
+          export PS1="\[\e[32;1m\]\u@\[\e[34;1m\]\h:\[\e[31;1m\]\w]$ \[\e[0m\]"
+          export PATH=$PATH:$HOME/bin:/usr/{{ pg_bin }}/bin
+          alias vi='vim'
+    - name: install postgresql pgdg repository
+      yum:
+        name: https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+        state: present
+    - name: install postgresql
+      yum:
+        name:
+          - postgresql{{ pgsql_ver }}
+          - postgresql{{ pgsql_ver }}-server
+          - postgresql{{ pgsql_ver }}-contrib
+        state: present
+# Playbook 2
+- name: Master setup
+  hosts: master
+  become: yes
+  become_user: postgres
+  vars:
+    pgdata_path: /var/lib/pgsql/{{ pgsql_ver }}/data
+    shared_buffer: "{{ (ansible_memory_mb.real.total / 2048) |round(0,'common')|int|abs }}"
+  tasks:
+    - name: PostgreSQL initdb
+      shell: "/usr/pgsql-{{ pgsql_ver }}/bin/initdb -D {{ pgdata_path }}"
+    - name: set postgresql.conf
+      replace:
+        path: "{{ pgdata_path }}/postgresql.conf"
+        regexp: "{{ item.regexp1 }}"
+        replace: "{{ item.replace }}"
+      with_items:
+        - { regexp1: '#wal_level = replica', replace: 'wal_level = replica' }
+        - { regexp1: '#work_mem = 4MB', replace: 'work_mem = 20MB' }
+        - { regexp1: '#maintenance_work_mem = 64MB', replace: 'maintenance_work_mem = 512MB' }
+        - { regexp1: '#archive_mode = off', replace: 'archive_mode = on' }
+        - { regexp1: "#archive_command = ''", replace: "archive_command = 'true'" }
+        - { regexp1: "#listen_addresses = 'localhost'", replace: "listen_addresses = '*'" }
+        - { regexp1: 'max_connections = 100', replace: 'max_connections = 300' }
+        - { regexp1: 'shared_buffers = 128MB', replace: 'shared_buffers = {{ shared_buffer }}GB' }
+        - { regexp1: 'max_wal_size = 1GB', replace: 'max_wal_size = 2GB' }
+        - { regexp1: 'min_wal_size = 80MB', replace: 'min_wal_size = 2GB' }
+        - { regexp1: '#max_wal_senders = 10', replace: 'max_wal_senders = 4' }
+        - { regexp1: '#wal_keep_segments = 0', replace: 'wal_keep_segments = 10' }
+        - { regexp1: '#hot_standby = on', replace: 'hot_standby = on' }
+        - { regexp1: "log_line_prefix = '%m \\[%p\\] '", replace: "log_line_prefix = '%t %u@%r/%d \\[%p\\] '" }
+        - { regexp1: "log_filename = 'postgresql-%a.log'", replace: "log_filename = 'pglog-%Y%m%d%H.log'" }
+    - name: set pg_hba.conf
+      lineinfile:
+        path: '{{ pgdata_path }}/pg_hba.conf'
+        line: "{{ item.line1 }}"
+      with_items:
+        - { line1: "host    all             all             0.0.0.0/0               md5" }
+        - { line1: "host    replication     postgres        192.168.10.0/24         trust" }
+    - name: Start Database
+      shell: "/usr/pgsql-{{ pgsql_ver }}/bin/pg_ctl start -D {{ pgdata_path }}"
+# Playbook 2
+- name: Slave Setup
+  hosts: slave
+  become: yes
+  become_user: postgres
+  vars:
+    pgdata_path: /var/lib/pgsql/{{ pgsql_ver }}/data
+  tasks:
+    - name: to Slave bakcup streaming
+      shell: "/usr/pgsql-{{ pgsql_ver }}/bin/pg_basebackup -h pgsql01 -U postgres -D {{ pgdata_path }} -X stream -P"
+    - name: create recovery.conf
+      file:
+        path: "{{ pgdata_path }}/recovery.conf"
+        owner: postgres
+        group: postgres
+        state: touch
+    - name: recovery.conf setup
+      blockinfile:
+        path: "{{ pgdata_path }}/recovery.conf"
+        block: |
+          recovery_target_timeline = 'latest'
+          standby_mode = on
+          primary_conninfo = 'host=pgsql01 port=5432 user=postgres'
+    - name: start slave database
+      shell: "/usr/pgsql-{{ pgsql_ver }}/bin/pg_ctl start -D {{ pgdata_path }}"

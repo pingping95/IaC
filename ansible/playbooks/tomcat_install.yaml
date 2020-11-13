@@ -1,0 +1,20 @@
+# Install
+---
+- name: Install Java
+- name: Check if tomcat is already installed
+- name: Create tomcat group
+- name: Create tomcat user
+- name: Create temp directory
+- name: Download apache-tomcat-{{ }}.tar.gz
+- name: Unarchive apache-tomcat-{{ }}.tar.gz
+- name: Clean up temporary files
+
+# Configure Tomcat
+---
+- name: server.xml
+- name: tomcat-users.xml
+- name: tomcat_install_path, tomcat_version
+- name: 
+- name: 
+- name: 
+- name: 
