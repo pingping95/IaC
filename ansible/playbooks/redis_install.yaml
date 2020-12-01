@@ -1,0 +1,11 @@
+---
+- name: Install latest stable redis
+  hosts:
+  vars:
+  remote_user:
+  tasks:
+  - name: Extract redis-stable.tar.gz into {{ redis_tmp_path }}
+  - name: Change the working directory to {{ redis_tmp_path }} and tun the command make
+  - name:
+  - name:
+  - name:

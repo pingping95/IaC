@@ -1,0 +1,220 @@
+# 변수는 {{ 변수이름 }}과 같이 정의한 후 variable.yaml 파일에서 "변수이름: 값"의 형태로 선언하여 사용해주시면 됩니다.
+# 또한 맨 윗부분에 자세히 보시면 include_vars: variable.yaml으로 참조하여 사용한다는 것을 알 수 있습니다.
+# 적절하게 변경하여 활용해서 사용
+---
+  - name: set sonarqube
+    hosts: sonarqube
+    become_user: root
+    become: yes
+    tasks:
+      - include_vars: variable.yaml
+      # 유저 생성
+      - name: add user
+        user:
+          name: sonarqube
+          password: "{{ sonar_user_password }}"
+      
+      # Admin 권한 부여
+      - name: modify visudo
+        lineinfile:
+          path: /etc/sudoers
+          insertafter: '^root*'
+          state: present
+          line: "sonarqube\tALL=(ALL)\tNOPASSWD:ALL"
+          validate: 'visudo -cf %s'
+      
+      # 패스워드 기반 접속 허용
+      - name: modify sshd_config
+        replace:
+          path: /etc/ssh/sshd_config
+          regexp: 'PasswordAuthentication no'
+          replace: 'PasswordAuthentication yes'
+  
+      # OS 단 위의 세팅 반영
+      - name: restart sshd
+        service:
+          name: sshd
+          state: restarted
+  
+      # 자바 설치
+      - name: Install Open-JDK8
+        yum:
+          state: installed
+          name: java-1.8.0-openjdk-devel.x86_64
+      
+      # Mysql 5.7 (특정버전) RPM 설치
+      - name: Install Mysql RPM
+        yum:
+          state: installed
+          name: "{{ mysql_rpm_url }}"
+          
+      # 위의 RPM으로 부터 패키지 설치
+      - name: Install Mysql
+        yum:
+          state: installed
+          name: 
+            - mysql-community-client
+            - mysql-server
+      
+      # Mysql Service 시작
+      - name: Systemctl Mysql
+        systemd:
+          name: mysqld
+          state: started
+          enabled: yes
+  
+      # Check Root Password File
+      - name: check installed sonarqube
+        stat:
+          path: "{{ sonarqube_path }}/mysql_root_temp_password"
+        register: check_mysql_root_temp_password
+
+      # Mysql 임시 비밀번호 파일로 생성해주는 Python 다운로드
+      - name: Download get mysql temp pw python in S3
+        command: aws s3 cp {{ sonar_s3_url }}/get_mysql_root_temp_passwd.py {{ sonarqube_path }}/get_mysql_root_temp_passwd.py
+        when: check_mysql_root_temp_password.stat.exists == False
+
+      # python file 권한 부여
+      - name: add permission to python file
+        file:
+          path: "{{ sonarqube_path }}/get_mysql_root_temp_passwd.py"
+          owner: sonarqube
+          group: sonarqube
+          mode: 0755
+        when: check_mysql_root_temp_password.stat.exists == False
+  
+      # Mysql 임시 비밀번호 파일로 생성 (특수문자 앞에 \ 필요)
+      - name: make temporary root pass to file
+        command: python3 {{ sonarqube_path }}/get_mysql_root_temp_passwd.py
+        when: check_mysql_root_temp_password.stat.exists == False
+      
+      # Check Root Password File
+      - name: check installed sonarqube
+        stat:
+          path: "{{ sonarqube_path }}/mysql_root_temp_password"
+        register: check_mysql_root_temp_password
+  
+      # Mysql 임시 비밀번호 변수 선언
+      - name: Acquire temporary root pass
+        shell: >
+          cat {{ sonarqube_path }}/mysql_root_temp_password
+        register: mysql_root_temp_password
+        when: check_mysql_root_temp_password.stat.exists == False
+  
+      # DB 루트 유저 비번 변경
+      - name: Update MySQL root password for localhost root account
+        shell: >
+          mysql -uroot -p{{ mysql_root_temp_password.stdout }} -e 'ALTER USER "root"@"localhost" IDENTIFIED WITH mysql_native_password BY "{{ mysql_root_passwd }}";' --connect-expired-password
+        when: check_mysql_root_temp_password.stat.exists == False
+
+      # Sql File Check
+      - name: check sonar db set
+        stat:
+          path: "{{ sonarqube_path }}/sonar.sql"
+        register: check_sonar_sql
+
+      # Sonar DB Setting Sql
+      - name: Download Sonar DB Sql
+        command: aws s3 cp {{ sonar_s3_url }}/sonar.sql {{ sonarqube_path }}/sonar.sql
+        when: check_sonar_sql.stat.exists == False
+
+      # DB 세팅
+      - name: set sonar DB
+        shell: >
+          mysql -uroot -p{{ mysql_root_passwd }} < {{ sonarqube_path }}/sonar.sql
+        when: check_sonar_sql.stat.exists == False
+
+      # 소나큐브 설치 되었는지 체크 (wget 형태이기 때문에 체크하지 않으면, 계속 수행 됨)
+      - name: check installed sonarqube
+        stat:
+          path: "/opt/sonarqube"
+        register: sonarqube
+  
+      # 소나큐브 다운로드
+      - name: wget sonarqube
+        get_url: 
+          url: "{{ sonarqube_url }}"
+          dest: /opt
+        when: sonarqube.stat.exists == False
+  
+      # 압축 해제
+      - name: unzip sonarqube
+        unarchive: 
+          src: /opt/sonarqube-7.2.zip
+          dest: /opt
+          copy: no
+        when: sonarqube.stat.exists == False
+      
+      # 소나큐브 폴더 이름 변경
+      - name: change dir name sonarqube
+        command: mv /opt/sonarqube-7.2 /opt/sonarqube
+        when: sonarqube.stat.exists == False
+      
+      # 소나큐브 권한 변경 (sonarqube 유저로 실행해야 됨)
+      - name: change chown sonarqube
+        shell: chown -R sonarqube:sonarqube /opt/sonarqube
+        when: sonarqube.stat.exists == True
+        args:
+          warn: false
+  
+      # 소나큐브 실행 유저 세팅
+      - name: set user in sonar.sh
+        replace:
+          path: /opt/sonarqube/bin/linux-x86-64/sonar.sh
+          regexp: "#RUN_AS_USER="
+          replace: "RUN_AS_USER=sonarqube"
+        when: sonarqube.stat.exists == True
+      
+      # 소나큐브 DB Config 세팅
+      - name: set Sonarqube Config
+        replace:
+          path: /opt/sonarqube/conf/sonar.properties
+          regexp: "{{ item.regexp1 }}"
+          replace: "{{ item.replace }}"
+        with_items:
+          - { regexp1: '#sonar.jdbc.username=', replace: 'sonar.jdbc.username={{ mysql_user_name }}' }
+          - { regexp1: '#sonar.jdbc.password=', replace: 'sonar.jdbc.password={{ mysql_user_passwd }}' }
+          - { regexp1: '#sonar.jdbc.url=jdbc:mysql:.*', replace: 'sonar.jdbc.url={{ mysql_jdbc_url }}' }
+          - { regexp1: '#sonar.web.port=9000', replace: 'sonar.web.port={{ sonar_web_port }}' }
+        when: sonarqube.stat.exists == True
+
+      # 소나큐브 Systemctl 서비스 등록 여부 체크
+      - name: check set sonarqube service
+        stat:
+          path: "/usr/lib/systemd/system/sonar.service"
+        register: sonarqube_service
+  
+      # 소나큐브 서비스로 등록
+      - name: add service sonarqube
+        copy:
+          dest: /usr/lib/systemd/system/sonar.service
+          content: |
+            [Unit]
+            Description=SonarQube service
+            After=syslog.target network.target
+
+            [Service]
+            Type=simple
+            User=sonarqube
+            Group=sonarqube
+            PermissionsStartOnly=true
+            ExecStart=/bin/nohup /usr/bin/java -Xms32m -Xmx32m -Djava.net.preferIPv4Stack=true -jar /opt/sonarqube/lib/sonar-application-7.2.jar
+            StandardOutput=syslog
+            LimitNOFILE=65536
+            LimitNPROC=8192
+            TimeoutStartSec=5
+            Restart=always
+            SuccessExitStatus=143
+
+            [Install]
+            WantedBy=multi-user.target
+        when: sonarqube_service.stat.exists == False
+      
+      # 서버가 온 될때마다 수행될 수 있도록 Systemctl enable 설정
+      - name: systemctl enable sonarqube
+        systemd:
+          daemon_reload: yes
+          name: sonar.service
+          state: started
+          enabled: yes
+        when: sonarqube_service.stat.exists == False

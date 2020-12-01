@@ -1,0 +1,9 @@
+[defaults]
+inventory = inventory
+remote_user = user
+
+[privilete_escalation]
+become = yes
+become_method = sudo
+become_ask_pass = no
+become_user = root
